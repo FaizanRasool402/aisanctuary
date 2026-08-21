@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-surface text-navy-900 font-sans antialiased;
+}
+
+/* Visible keyboard focus for accessibility */
+:focus-visible {
+  outline: 2px solid #0D3BA8;
+  outline-offset: 2px;
+}
+
+table td {
+  @apply whitespace-nowrap px-3 md:px-4;
+}
