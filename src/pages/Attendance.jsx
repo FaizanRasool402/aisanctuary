@@ -39,7 +39,7 @@ const Attendance = () => {
       } else {
         const [batchRes, alertRes] = await Promise.all([
           api.get('/batches'),
-          api.get('/attendance/alerts'),
+          api.get('/attendance/alerts?all=true'),
         ]);
         setBatches(batchRes.data.data || []);
         setAlerts(alertRes.data.data || []);
@@ -97,7 +97,7 @@ const Attendance = () => {
         })),
       });
       await loadRoster();
-      const alertRes = await api.get('/attendance/alerts');
+      const alertRes = await api.get('/attendance/alerts?all=true');
       setAlerts(alertRes.data.data || []);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to save attendance');
@@ -117,30 +117,58 @@ const Attendance = () => {
       {isStudent && !loading && (
         <div className="space-y-6">
           {myStats.length === 0 ? (
-            <p className="text-sm text-gray-400">No attendance yet. It will appear after your teacher marks a class.</p>
+            <p className="text-sm text-gray-400">
+              No attendance yet. It will appear after your teacher marks a class.
+            </p>
           ) : (
             myStats.map((s) => (
-              <div key={s.enrollmentId} className="rounded-xl border border-navy-100 bg-white p-5 shadow-card">
-                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div
+                key={s.enrollmentId}
+                className="rounded-xl border border-navy-100 bg-white p-5 shadow-card"
+              >
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <h3 className="text-sm font-semibold text-navy-900">
                     {s.courseTitle} · {s.batchName}
                   </h3>
-                  <span
-                    className={`text-sm font-semibold ${
-                      s.belowThreshold ? 'text-red-600' : 'text-navy-600'
-                    }`}
-                  >
-                    {s.percent == null ? 'No classes yet' : `${s.percent}%`}
-                    {s.belowThreshold ? ` (below ${s.threshold}%)` : ''}
-                  </span>
+                  <div className="flex flex-wrap gap-2 text-sm">
+                    <span className="rounded-lg bg-navy-50 px-3 py-1.5 text-navy-800">
+                      Present / classes:{' '}
+                      <strong>
+                        {s.presentCount ?? 0}/{s.totalSessions ?? 0}
+                      </strong>
+                    </span>
+                    <span
+                      className={`rounded-lg px-3 py-1.5 font-semibold ${
+                        s.belowThreshold
+                          ? 'bg-red-50 text-red-700'
+                          : 'bg-green-50 text-green-700'
+                      }`}
+                    >
+                      Attendance:{' '}
+                      {s.percent == null ? 'No classes yet' : `${s.percent}%`}
+                      {s.belowThreshold ? ` (below ${s.threshold}%)` : ''}
+                    </span>
+                  </div>
                 </div>
+
                 <Table columns={['Date', 'Status']}>
-                  {(s.records || []).map((r) => (
-                    <tr key={`${s.enrollmentId}-${r.date}`}>
-                      <td className="py-3 text-sm text-gray-600">{r.date}</td>
-                      <td className="py-3 text-sm capitalize text-gray-700">{r.status}</td>
+                  {[...(s.records || [])]
+                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                    .map((r) => (
+                      <tr key={`${s.enrollmentId}-${r.date}-${r.code}`}>
+                        <td className="py-3 text-sm text-gray-600">{r.date || '—'}</td>
+                        <td className="py-3 text-sm capitalize text-gray-700">
+                          {r.status || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  {(s.records || []).length === 0 && (
+                    <tr>
+                      <td colSpan={2} className="px-4 py-8 text-center text-sm text-gray-400">
+                        No class dates marked yet. Percentage will update after attendance is saved.
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </Table>
               </div>
             ))
@@ -222,8 +250,11 @@ const Attendance = () => {
 
           <div>
             <h3 className="mb-3 text-sm font-semibold text-navy-900">
-              Low attendance alerts (below {threshold}%)
+              Student attendance overview
             </h3>
+            <p className="mb-3 text-xs text-gray-500">
+              All active enrollments. Below {threshold}% is highlighted in red.
+            </p>
             <Table columns={['Student', 'Course', 'Batch', 'Present / classes', '%']}>
               {alerts.map((a) => (
                 <tr key={a.enrollmentId} className="hover:bg-navy-50/40">
@@ -233,13 +264,19 @@ const Attendance = () => {
                   <td className="py-3 text-sm text-gray-600">
                     {a.presentCount}/{a.totalSessions}
                   </td>
-                  <td className="py-3 text-sm font-semibold text-red-600">{a.percent}%</td>
+                  <td
+                    className={`py-3 text-sm font-semibold ${
+                      a.belowThreshold ? 'text-red-600' : 'text-navy-700'
+                    }`}
+                  >
+                    {a.percent == null ? 'No classes yet' : `${a.percent}%`}
+                  </td>
                 </tr>
               ))}
               {alerts.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                    No students below {threshold}% yet.
+                    No active enrollments yet.
                   </td>
                 </tr>
               )}

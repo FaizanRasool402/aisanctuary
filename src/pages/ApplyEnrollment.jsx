@@ -167,14 +167,14 @@ const ApplyEnrollment = () => {
                     required
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Upload a clear photo of the front and back of the same CNIC. Other pictures will be rejected.
+                    Upload a clear photo of the front and back of the CNIC.
                   </p>
                 </div>
               )}
 
               {form.identityDocType === 'B-Form' && (
                 <p className="text-xs text-gray-500">
-                  B-Form has only one side. Upload a clear photo of the B-Form. Other pictures will be rejected.
+                  B-Form has only one side. Upload a clear photo of the B-Form.
                 </p>
               )}
 
@@ -235,9 +235,7 @@ const ApplyEnrollment = () => {
           <Button type="submit" disabled={submitting} className="w-full">
             {submitting
               ? !hasProfile
-                ? form.identityDocType === 'B-Form'
-                  ? 'Checking B-Form photo…'
-                  : 'Checking CNIC photos…'
+                ? 'Uploading…'
                 : 'Submitting…'
               : 'Submit enrollment request'}
           </Button>
