@@ -15,6 +15,7 @@ const emptyForm = {
   identityDocType: 'CNIC',
   guardianName: '',
   guardianContact: '',
+  enrollmentStatus: 'pending',
 };
 
 const Students = () => {
@@ -22,6 +23,7 @@ const Students = () => {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [frontFile, setFrontFile] = useState(null);
   const [backFile, setBackFile] = useState(null);
@@ -49,6 +51,43 @@ const Students = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFrontFile(null);
+    setBackFile(null);
+    setError('');
+    setShowForm(true);
+  };
+
+  const openEdit = (student) => {
+    setEditingId(student._id);
+    setForm({
+      name: student.user?.name || '',
+      email: student.user?.email || '',
+      phone: student.user?.phone || '',
+      password: '',
+      address: student.address || '',
+      identityDocType: student.identityDocType || 'CNIC',
+      guardianName: student.guardianName || '',
+      guardianContact: student.guardianContact || '',
+      enrollmentStatus: student.enrollmentStatus || 'pending',
+    });
+    setFrontFile(null);
+    setBackFile(null);
+    setError('');
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setFrontFile(null);
+    setBackFile(null);
+    setError('');
+  };
+
   const handleDelete = async (student) => {
     const name = student.user?.name || 'this student';
     if (!window.confirm(`Delete ${name}? This cannot be undone.`)) return;
@@ -74,33 +113,64 @@ const Students = () => {
     e.preventDefault();
     setError('');
 
-    const idError = validateIdImages(frontFile, backFile, form.identityDocType);
-    if (idError) {
-      setError(idError);
-      return;
+    const replacingIds = Boolean(frontFile || backFile);
+    if (!editingId) {
+      const createError = validateIdImages(frontFile, backFile, form.identityDocType);
+      if (createError) {
+        setError(createError);
+        return;
+      }
+    } else if (replacingIds) {
+      const replaceError = validateIdImages(frontFile, backFile, form.identityDocType);
+      if (replaceError) {
+        setError(replaceError);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
       const fd = new FormData();
-      Object.entries(form).forEach(([key, value]) => fd.append(key, value));
-      fd.append('identityDocFront', frontFile);
-      if (form.identityDocType === 'CNIC') {
+      fd.append('name', form.name);
+      fd.append('email', form.email);
+      fd.append('phone', form.phone);
+      fd.append('address', form.address);
+      fd.append('identityDocType', form.identityDocType);
+      fd.append('enrollmentStatus', form.enrollmentStatus);
+      if (form.identityDocType === 'B-Form') {
+        fd.append('guardianName', form.guardianName);
+        fd.append('guardianContact', form.guardianContact);
+      }
+      if (form.password.trim()) fd.append('password', form.password);
+      if (frontFile) fd.append('identityDocFront', frontFile);
+      if (form.identityDocType === 'CNIC' && backFile) {
         fd.append('identityDocBack', backFile);
       }
 
-      await api.post('/students', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
-      });
+      if (editingId) {
+        await api.put(`/students/${editingId}`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000,
+        });
+      } else {
+        if (!form.password.trim()) {
+          setError('Temporary password is required');
+          setSubmitting(false);
+          return;
+        }
+        await api.post('/students', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120000,
+        });
+      }
 
-      setShowForm(false);
-      setForm(emptyForm);
-      setFrontFile(null);
-      setBackFile(null);
+      closeForm();
       fetchStudents();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to register student');
+      setError(
+        err.response?.data?.message ||
+          (editingId ? 'Failed to update student' : 'Failed to register student')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -128,9 +198,7 @@ const Students = () => {
             Search
           </Button>
         </form>
-        {canEdit && (
-          <Button onClick={() => setShowForm(true)}>+ Register Student</Button>
-        )}
+        {canEdit && <Button onClick={openCreate}>+ Register Student</Button>}
       </div>
 
       {error && !showForm && (
@@ -158,13 +226,18 @@ const Students = () => {
               </td>
               {canEdit && (
                 <td className="px-4 py-3">
-                  <Button
-                    variant="danger"
-                    disabled={deletingId === s._id}
-                    onClick={() => handleDelete(s)}
-                  >
-                    {deletingId === s._id ? 'Deleting…' : 'Delete'}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" onClick={() => openEdit(s)}>
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={deletingId === s._id}
+                      onClick={() => handleDelete(s)}
+                    >
+                      {deletingId === s._id ? 'Deleting…' : 'Delete'}
+                    </Button>
+                  </div>
                 </td>
               )}
             </tr>
@@ -182,7 +255,9 @@ const Students = () => {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-navy-900">Register New Student</h2>
+            <h2 className="mb-4 text-lg font-semibold text-navy-900">
+              {editingId ? 'Edit Student' : 'Register New Student'}
+            </h2>
 
             {error && (
               <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
@@ -190,16 +265,43 @@ const Students = () => {
 
             <form onSubmit={handleSubmit} className="space-y-3">
               <Field label="Full Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-              <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
+              <Field
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={(v) => setForm({ ...form, email: v })}
+                required
+              />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
               <Field
-                label="Temporary Password"
+                label={editingId ? 'New password (optional)' : 'Temporary Password'}
                 type="password"
                 value={form.password}
                 onChange={(v) => setForm({ ...form, password: v })}
+                required={!editingId}
+              />
+              <Field
+                label="Address"
+                value={form.address}
+                onChange={(v) => setForm({ ...form, address: v })}
                 required
               />
-              <Field label="Address" value={form.address} onChange={(v) => setForm({ ...form, address: v })} required />
+
+              {editingId && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-navy-900">Enrollment status</label>
+                  <select
+                    value={form.enrollmentStatus}
+                    onChange={(e) => setForm({ ...form, enrollmentStatus: e.target.value })}
+                    className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-navy-900">Identity Document</label>
@@ -219,13 +321,14 @@ const Students = () => {
               <div>
                 <label className="mb-1 block text-sm font-medium text-navy-900">
                   {form.identityDocType === 'B-Form' ? 'B-Form photo' : 'CNIC front photo'}
+                  {editingId ? ' (optional — leave empty to keep current)' : ''}
                 </label>
                 <input
                   type="file"
                   accept={ID_IMAGE_ACCEPT}
                   onChange={(e) => setFrontFile(e.target.files[0] || null)}
                   className="w-full text-sm"
-                  required
+                  required={!editingId}
                 />
               </div>
 
@@ -233,24 +336,16 @@ const Students = () => {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-navy-900">
                     CNIC back photo
+                    {editingId ? ' (optional — leave empty to keep current)' : ''}
                   </label>
                   <input
                     type="file"
                     accept={ID_IMAGE_ACCEPT}
                     onChange={(e) => setBackFile(e.target.files[0] || null)}
                     className="w-full text-sm"
-                    required
+                    required={!editingId}
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Upload a clear photo of the front and back of the CNIC.
-                  </p>
                 </div>
-              )}
-
-              {form.identityDocType === 'B-Form' && (
-                <p className="text-xs text-gray-500">
-                  B-Form has only one side. Upload a clear photo of the B-Form.
-                </p>
               )}
 
               {form.identityDocType === 'B-Form' && (
@@ -271,13 +366,11 @@ const Students = () => {
               )}
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="secondary" onClick={closeForm}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting
-                    ? 'Uploading…'
-                    : 'Register Student'}
+                  {submitting ? 'Saving…' : editingId ? 'Save changes' : 'Register Student'}
                 </Button>
               </div>
             </form>

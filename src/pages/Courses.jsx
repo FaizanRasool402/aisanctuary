@@ -12,6 +12,7 @@ const Courses = () => {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,17 +35,50 @@ const Courses = () => {
     fetchCourses();
   }, []);
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setShowForm(true);
+  };
+
+  const openEdit = (course) => {
+    setEditingId(course._id);
+    setForm({
+      title: course.title || '',
+      description: course.description || '',
+      defaultDurationWeeks: course.defaultDurationWeeks ?? '',
+    });
+    setError('');
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSubmitting(true);
     try {
-      await api.post('/courses', form);
-      setShowForm(false);
-      setForm(emptyForm);
+      const payload = {
+        title: form.title,
+        description: form.description,
+        defaultDurationWeeks: Number(form.defaultDurationWeeks),
+      };
+      if (editingId) {
+        await api.put(`/courses/${editingId}`, payload);
+      } else {
+        await api.post('/courses', payload);
+      }
+      closeForm();
       fetchCourses();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create course');
+      setError(err.response?.data?.message || (editingId ? 'Failed to update course' : 'Failed to create course'));
     } finally {
       setSubmitting(false);
     }
@@ -63,7 +97,7 @@ const Courses = () => {
     <Layout title="Courses">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500">{courses.length} course(s)</p>
-        {canEdit && <Button onClick={() => setShowForm(true)}>+ Add Course</Button>}
+        {canEdit && <Button onClick={openCreate}>+ Add Course</Button>}
       </div>
 
       {error && !showForm && (
@@ -77,7 +111,7 @@ const Courses = () => {
           {courses.map((c) => (
             <tr key={c._id} className="hover:bg-navy-50/40">
               <td className="px-4 py-3 text-sm font-medium text-navy-900">{c.title}</td>
-              <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{c.description}</td>
+              <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-600">{c.description}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{c.defaultDurationWeeks} weeks</td>
               <td className="px-4 py-3">
                 <span
@@ -90,12 +124,22 @@ const Courses = () => {
               </td>
               {canEdit && (
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => toggleStatus(c._id)}
-                    className="text-xs font-medium text-navy-600 hover:underline"
-                  >
-                    {c.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(c)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleStatus(c._id)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      {c.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
                 </td>
               )}
             </tr>
@@ -113,7 +157,9 @@ const Courses = () => {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-navy-900">Add Course</h2>
+            <h2 className="mb-4 text-lg font-semibold text-navy-900">
+              {editingId ? 'Edit Course' : 'Add Course'}
+            </h2>
 
             {error && (
               <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
@@ -139,11 +185,11 @@ const Courses = () => {
               />
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="secondary" onClick={closeForm}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? 'Saving…' : 'Add Course'}
+                  {submitting ? 'Saving…' : editingId ? 'Save changes' : 'Add Course'}
                 </Button>
               </div>
             </form>

@@ -12,6 +12,7 @@ const Teachers = () => {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +35,33 @@ const Teachers = () => {
     fetchTeachers();
   }, []);
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setShowForm(true);
+  };
+
+  const openEdit = (teacher) => {
+    setEditingId(teacher._id);
+    setForm({
+      name: teacher.user?.name || '',
+      email: teacher.user?.email || '',
+      phone: teacher.user?.phone || '',
+      password: '',
+      expertise: (teacher.expertise || []).join(', '),
+    });
+    setError('');
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -43,14 +71,36 @@ const Teachers = () => {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      await api.post('/teachers', { ...form, expertise: expertiseArray });
-      setShowForm(false);
-      setForm(emptyForm);
+
+      if (editingId) {
+        const payload = {
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          expertise: expertiseArray,
+        };
+        if (form.password.trim()) payload.password = form.password;
+        await api.put(`/teachers/${editingId}`, payload);
+      } else {
+        await api.post('/teachers', { ...form, expertise: expertiseArray });
+      }
+      closeForm();
       fetchTeachers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create teacher');
+      setError(
+        err.response?.data?.message || (editingId ? 'Failed to update teacher' : 'Failed to create teacher')
+      );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const toggleStatus = async (teacher) => {
+    try {
+      await api.put(`/teachers/${teacher._id}`, { isActive: !teacher.isActive });
+      fetchTeachers();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update teacher status');
     }
   };
 
@@ -58,13 +108,17 @@ const Teachers = () => {
     <Layout title="Teachers">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500">{teachers.length} teacher(s)</p>
-        {canEdit && <Button onClick={() => setShowForm(true)}>+ Add Teacher</Button>}
+        {canEdit && <Button onClick={openCreate}>+ Add Teacher</Button>}
       </div>
+
+      {error && !showForm && (
+        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Loading teachers…</p>
       ) : (
-        <Table columns={['Name', 'Email', 'Phone', 'Expertise', 'Status']}>
+        <Table columns={['Name', 'Email', 'Phone', 'Expertise', 'Status', canEdit ? 'Actions' : '']}>
           {teachers.map((t) => (
             <tr key={t._id} className="hover:bg-navy-50/40">
               <td className="px-4 py-3 text-sm font-medium text-navy-900">{t.user?.name}</td>
@@ -88,11 +142,31 @@ const Teachers = () => {
                   {t.isActive ? 'Active' : 'Inactive'}
                 </span>
               </td>
+              {canEdit && (
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(t)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleStatus(t)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      {t.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
           {teachers.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+              <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
                 No teachers found.
               </td>
             </tr>
@@ -103,7 +177,9 @@ const Teachers = () => {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-navy-900">Add Teacher</h2>
+            <h2 className="mb-4 text-lg font-semibold text-navy-900">
+              {editingId ? 'Edit Teacher' : 'Add Teacher'}
+            </h2>
 
             {error && (
               <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
@@ -111,14 +187,20 @@ const Teachers = () => {
 
             <form onSubmit={handleSubmit} className="space-y-3">
               <Field label="Full Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} required />
-              <Field label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} required />
+              <Field
+                label="Email"
+                type="email"
+                value={form.email}
+                onChange={(v) => setForm({ ...form, email: v })}
+                required
+              />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
               <Field
-                label="Temporary Password"
+                label={editingId ? 'New password (optional)' : 'Temporary Password'}
                 type="password"
                 value={form.password}
                 onChange={(v) => setForm({ ...form, password: v })}
-                required
+                required={!editingId}
               />
               <Field
                 label="Expertise (comma-separated, e.g. MERN Stack Developer, Python)"
@@ -127,11 +209,11 @@ const Teachers = () => {
               />
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="secondary" onClick={closeForm}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? 'Saving…' : 'Add Teacher'}
+                  {submitting ? 'Saving…' : editingId ? 'Save changes' : 'Add Teacher'}
                 </Button>
               </div>
             </form>

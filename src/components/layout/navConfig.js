@@ -6,7 +6,6 @@ export const navByRole = {
     { to: '/courses', label: 'Courses' },
     { to: '/batches', label: 'Batches' },
     { to: '/enrollments', label: 'Enrollments' },
-    { to: '/enrollment-requests', label: 'Enrollment Requests' },
     { to: '/fees', label: 'Fees' },
     { to: '/attendance', label: 'Attendance' },
   ],

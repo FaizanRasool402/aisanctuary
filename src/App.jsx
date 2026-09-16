@@ -94,7 +94,7 @@ function App() {
         <Route
           path="/enrollment-requests"
           element={
-            <ProtectedRoute allowedRoles={['founder', 'admin']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <EnrollmentRequests />
             </ProtectedRoute>
           }

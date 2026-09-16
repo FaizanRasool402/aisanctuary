@@ -5,8 +5,10 @@ import Button from '../components/ui/Button';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
-const money = (n) =>
-  `Rs ${Number(n || 0).toLocaleString('en-PK', { maximumFractionDigits: 0 })}`;
+const money = (n) => {
+  const value = Math.round(Number(n) || 0);
+  return `Rs ${value.toLocaleString('en-PK')}`;
+};
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -41,10 +43,12 @@ const Fees = () => {
     amount: '',
     paidDate: new Date().toISOString().slice(0, 10),
     method: 'cash',
+    feeType: 'course',
     note: '',
   });
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingPay, setSavingPay] = useState(false);
+  const [deletingPayId, setDeletingPayId] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -81,8 +85,9 @@ const Fees = () => {
     setSavingPlan(true);
     setError('');
     try {
+      const amount = Math.round(Number(String(planForm.monthlyFeeAmount).replace(/,/g, '')));
       await api.put(`/fees/plans/${planForm.enrollment}`, {
-        monthlyFeeAmount: Number(planForm.monthlyFeeAmount),
+        monthlyFeeAmount: amount,
       });
       setPlanForm({ enrollment: '', monthlyFeeAmount: '' });
       await load();
@@ -98,12 +103,14 @@ const Fees = () => {
     setSavingPay(true);
     setError('');
     try {
-      await api.post('/fees', payForm);
+      const amount = Math.round(Number(String(payForm.amount).replace(/,/g, '')));
+      await api.post('/fees', { ...payForm, amount });
       setPayForm({
         enrollment: '',
         amount: '',
         paidDate: new Date().toISOString().slice(0, 10),
         method: 'cash',
+        feeType: 'course',
         note: '',
       });
       await load();
@@ -114,14 +121,59 @@ const Fees = () => {
     }
   };
 
+  const handleDeletePayment = async (payment) => {
+    if (!window.confirm(`Delete payment of ${money(payment.amount)}?`)) return;
+    setDeletingPayId(payment._id);
+    setError('');
+    try {
+      await api.delete(`/fees/${payment._id}`);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete payment');
+    } finally {
+      setDeletingPayId('');
+    }
+  };
+
+  const handleFixPaymentAmount = async (payment) => {
+    const next = window.prompt('Enter exact amount (e.g. 1500)', String(payment.amount));
+    if (next == null) return;
+    const amount = Math.round(Number(String(next).replace(/,/g, '')));
+    if (!Number.isFinite(amount) || amount < 1) {
+      setError('Enter a valid whole amount like 1500');
+      return;
+    }
+    setError('');
+    try {
+      await api.put(`/fees/${payment._id}`, { amount });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update payment');
+    }
+  };
+
   const enrollmentLabel = (e) =>
     `${e.student?.user?.name || 'Student'} — ${e.course?.title || 'Course'}`;
+
+  const paymentEnrollments =
+    payForm.feeType === 'admission'
+      ? enrollments
+      : enrollments.filter((e) => Number(e.monthlyFeeAmount) > 0);
+
+  const onSelectPayEnrollment = (v) => {
+    const selected = enrollments.find((e) => e._id === v);
+    const next = { ...payForm, enrollment: v };
+    if (payForm.feeType === 'course' && selected?.monthlyFeeAmount != null) {
+      next.amount = String(Math.round(Number(selected.monthlyFeeAmount)));
+    }
+    setPayForm(next);
+  };
 
   return (
     <Layout title="Fees">
       <p className="mb-5 text-sm text-gray-500">
-        Cycle is 25th to 25th. Split on received amount: teacher 50%, manager 10%, institute 40%.
-        Pending means the full monthly fee has not been received in this cycle.
+        Cycle is 25th to 25th. Course fee split: teacher 50%, manager 10%, institute 40%.
+        Admission fee goes 100% to the institute (no split).
       </p>
 
       {error && (
@@ -149,8 +201,22 @@ const Fees = () => {
           <h3 className="mb-3 text-sm font-semibold text-navy-900">
             Monthly summary · {formatDate(summary.period?.start)} – {formatDate(summary.period?.cycleEnd)}
           </h3>
+
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <SummaryChip
+              label="Admission fees (institute)"
+              hint="Full admission amount collected this cycle — 100% institute"
+              value={money(summary.instituteAdmissionFee ?? summary.admissionFeeCollected)}
+            />
+            <SummaryChip
+              label="Course fee to institute (40%)"
+              hint="Institute share from course fees this cycle"
+              value={money(summary.instituteCourseFee ?? summary.instituteShare)}
+            />
+          </div>
+
           <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryChip label="Total received" value={money(summary.totalCollected)} />
+            <SummaryChip label="Course fees collected" value={money(summary.courseFeeCollected)} />
             <SummaryChip label="Teacher 50%" value={money(summary.teacherShare)} />
             <SummaryChip label="Manager 10%" value={money(summary.managerShare)} />
             <SummaryChip label="Institute 40%" value={money(summary.instituteShare)} />
@@ -170,7 +236,7 @@ const Fees = () => {
             {(summary.byCourse || []).length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
-                  No payments in this cycle.
+                  No course fee payments in this cycle.
                 </td>
               </tr>
             )}
@@ -184,8 +250,8 @@ const Fees = () => {
             onSubmit={handleSetPlan}
             className="space-y-3 rounded-xl border border-navy-100 bg-white p-5 shadow-card"
           >
-            <h3 className="text-sm font-semibold text-navy-900">Set student monthly fee</h3>
-            <p className="text-xs text-gray-500">Amount 0 means this student has no fee.</p>
+            <h3 className="text-sm font-semibold text-navy-900">Set student monthly course fee</h3>
+            <p className="text-xs text-gray-500">Amount 0 means this student has no monthly course fee.</p>
             <SelectEnrollment
               enrollments={enrollments}
               value={planForm.enrollment}
@@ -200,7 +266,7 @@ const Fees = () => {
               label={enrollmentLabel}
             />
             <Field
-              label="Monthly fee amount (Rs)"
+              label="Monthly course fee (Rs)"
               type="number"
               min="0"
               value={planForm.monthlyFeeAmount}
@@ -217,11 +283,26 @@ const Fees = () => {
             className="space-y-3 rounded-xl border border-navy-100 bg-white p-5 shadow-card"
           >
             <h3 className="text-sm font-semibold text-navy-900">Add payment</h3>
-            <p className="text-xs text-gray-500">Cash or bank — admin records what was received.</p>
+            <p className="text-xs text-gray-500">
+              Course fee is split 50/10/40. Admission fee goes fully to the institute.
+            </p>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-navy-900">Fee type</label>
+              <select
+                value={payForm.feeType}
+                onChange={(e) =>
+                  setPayForm({ ...payForm, feeType: e.target.value, enrollment: '' })
+                }
+                className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
+              >
+                <option value="course">Course fee (monthly)</option>
+                <option value="admission">Admission fee</option>
+              </select>
+            </div>
             <SelectEnrollment
-              enrollments={enrollments.filter((e) => Number(e.monthlyFeeAmount) > 0)}
+              enrollments={paymentEnrollments}
               value={payForm.enrollment}
-              onChange={(v) => setPayForm({ ...payForm, enrollment: v })}
+              onChange={onSelectPayEnrollment}
               label={enrollmentLabel}
             />
             <Field
@@ -264,7 +345,7 @@ const Fees = () => {
 
       <div className="mb-8">
         <h3 className="mb-3 text-sm font-semibold text-navy-900">
-          Pending this cycle (full fee not received)
+          Pending this cycle (monthly course fee not received)
         </h3>
         <Table columns={['Student', 'Course', 'Monthly fee']}>
           {pending.map((e) => (
@@ -277,7 +358,7 @@ const Fees = () => {
           {pending.length === 0 && (
             <tr>
               <td colSpan={3} className="px-4 py-8 text-center text-sm text-gray-400">
-                No pending full fees in this cycle.
+                No pending course fees in this cycle.
               </td>
             </tr>
           )}
@@ -286,20 +367,55 @@ const Fees = () => {
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-navy-900">Payment record</h3>
-        <Table columns={['Date', 'Student', 'Course', 'Amount', 'Method', 'Note']}>
+        <Table
+          columns={[
+            'Date',
+            'Student',
+            'Course',
+            'Type',
+            'Amount',
+            'Method',
+            'Note',
+            canEdit ? 'Actions' : '',
+          ]}
+        >
           {payments.map((p) => (
             <tr key={p._id} className="hover:bg-navy-50/40">
               <td className="px-4 py-3 text-sm text-gray-600">{formatDate(p.paidDate)}</td>
               <td className="px-4 py-3 text-sm font-medium text-navy-900">{p.student?.user?.name}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{p.enrollment?.course?.title}</td>
+              <td className="px-4 py-3 text-sm capitalize text-gray-600">
+                {p.feeType === 'admission' ? 'Admission' : 'Course'}
+              </td>
               <td className="px-4 py-3 text-sm text-gray-600">{money(p.amount)}</td>
               <td className="px-4 py-3 text-sm capitalize text-gray-600">{p.method}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{p.note || '—'}</td>
+              {canEdit && (
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleFixPaymentAmount(p)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      Edit amount
+                    </button>
+                    <button
+                      type="button"
+                      disabled={deletingPayId === p._id}
+                      onClick={() => handleDeletePayment(p)}
+                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      {deletingPayId === p._id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
           {payments.length === 0 && (
             <tr>
-              <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+              <td colSpan={canEdit ? 8 : 7} className="px-4 py-8 text-center text-sm text-gray-400">
                 No payments recorded yet.
               </td>
             </tr>
@@ -310,10 +426,11 @@ const Fees = () => {
   );
 };
 
-const SummaryChip = ({ label, value }) => (
+const SummaryChip = ({ label, value, hint }) => (
   <div className="rounded-xl border border-navy-100 bg-white p-4 shadow-card">
     <p className="text-xs font-medium text-gray-500">{label}</p>
     <p className="mt-1 text-lg font-semibold text-navy-900">{value}</p>
+    {hint ? <p className="mt-1 text-xs text-gray-400">{hint}</p> : null}
   </div>
 );
 

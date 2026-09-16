@@ -24,6 +24,7 @@ const Batches = () => {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +56,7 @@ const Batches = () => {
 
   useEffect(() => {
     fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleDay = (day) => {
@@ -66,19 +68,74 @@ const Batches = () => {
     }));
   };
 
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+    setShowForm(true);
+  };
+
+  const openEdit = (batch) => {
+    setEditingId(batch._id);
+    setForm({
+      course: batch.course?._id || batch.course || '',
+      teacher: batch.teacher?._id || batch.teacher || '',
+      name: batch.name || '',
+      scheduleDays: batch.scheduleDays || [],
+      scheduleStartTime: batch.scheduleStartTime || '',
+      scheduleEndTime: batch.scheduleEndTime || '',
+      capacity: batch.capacity ?? 20,
+    });
+    setError('');
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!form.scheduleDays.length) {
+      setError('Select at least one class day');
+      return;
+    }
     setSubmitting(true);
     try {
-      await api.post('/batches', form);
-      setShowForm(false);
-      setForm(emptyForm);
+      if (editingId) {
+        await api.put(`/batches/${editingId}`, {
+          name: form.name,
+          teacher: form.teacher,
+          scheduleDays: form.scheduleDays,
+          scheduleStartTime: form.scheduleStartTime,
+          scheduleEndTime: form.scheduleEndTime,
+          capacity: Number(form.capacity),
+        });
+      } else {
+        await api.post('/batches', {
+          ...form,
+          capacity: Number(form.capacity),
+        });
+      }
+      closeForm();
       fetchAll();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create batch');
+      setError(err.response?.data?.message || (editingId ? 'Failed to update batch' : 'Failed to create batch'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const toggleStatus = async (batch) => {
+    try {
+      await api.put(`/batches/${batch._id}`, { isActive: !batch.isActive });
+      fetchAll();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update batch status');
     }
   };
 
@@ -86,7 +143,7 @@ const Batches = () => {
     <Layout title="Batches">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500">{batches.length} batch(es) · max 20 students each</p>
-        {canEdit && <Button onClick={() => setShowForm(true)}>+ Add Batch</Button>}
+        {canEdit && <Button onClick={openCreate}>+ Add Batch</Button>}
       </div>
 
       {error && !showForm && (
@@ -96,7 +153,9 @@ const Batches = () => {
       {loading ? (
         <p className="text-gray-500">Loading batches…</p>
       ) : (
-        <Table columns={['Batch', 'Course', 'Teacher', 'Schedule', 'Capacity']}>
+        <Table
+          columns={['Batch', 'Course', 'Teacher', 'Schedule', 'Capacity', 'Status', canEdit ? 'Actions' : '']}
+        >
           {batches.map((b) => (
             <tr key={b._id} className="hover:bg-navy-50/40">
               <td className="px-4 py-3 text-sm font-medium text-navy-900">{b.name}</td>
@@ -108,11 +167,40 @@ const Batches = () => {
               <td className="px-4 py-3 text-sm text-gray-600">
                 {b.enrolledCount}/{b.capacity}
               </td>
+              <td className="px-4 py-3">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    b.isActive !== false ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+                  }`}
+                >
+                  {b.isActive !== false ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              {canEdit && (
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(b)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleStatus(b)}
+                      className="text-xs font-medium text-navy-600 hover:underline"
+                    >
+                      {b.isActive !== false ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
           {batches.length === 0 && (
             <tr>
-              <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+              <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
                 No batches found.
               </td>
             </tr>
@@ -123,7 +211,9 @@ const Batches = () => {
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-semibold text-navy-900">Add Batch</h2>
+            <h2 className="mb-4 text-lg font-semibold text-navy-900">
+              {editingId ? 'Edit Batch' : 'Add Batch'}
+            </h2>
 
             {error && (
               <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
@@ -146,8 +236,9 @@ const Batches = () => {
                 <select
                   value={form.course}
                   onChange={(e) => setForm({ ...form, course: e.target.value })}
-                  required
-                  className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
+                  required={!editingId}
+                  disabled={Boolean(editingId)}
+                  className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none disabled:bg-gray-50"
                 >
                   <option value="">Select a course</option>
                   {courses.map((c) => (
@@ -155,7 +246,15 @@ const Batches = () => {
                       {c.title}
                     </option>
                   ))}
+                  {editingId &&
+                    form.course &&
+                    !courses.some((c) => c._id === form.course) && (
+                      <option value={form.course}>Current course</option>
+                    )}
                 </select>
+                {editingId && (
+                  <p className="mt-1 text-xs text-gray-500">Course cannot be changed after creation.</p>
+                )}
               </div>
 
               <div>
@@ -185,9 +284,9 @@ const Batches = () => {
                       type="button"
                       key={day}
                       onClick={() => toggleDay(day)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                         form.scheduleDays.includes(day)
-                          ? 'bg-navy-500 text-white border-navy-500'
+                          ? 'border-navy-500 bg-navy-500 text-white'
                           : 'border-navy-100 text-gray-600 hover:bg-navy-50'
                       }`}
                     >
@@ -235,11 +334,11 @@ const Batches = () => {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
+                <Button type="button" variant="secondary" onClick={closeForm}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? 'Saving…' : 'Add Batch'}
+                  {submitting ? 'Saving…' : editingId ? 'Save changes' : 'Add Batch'}
                 </Button>
               </div>
             </form>
