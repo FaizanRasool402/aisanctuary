@@ -114,13 +114,20 @@ const Students = () => {
     setError('');
 
     const replacingIds = Boolean(frontFile || backFile);
-    if (!editingId) {
+    if (!editingId && replacingIds) {
       const createError = validateIdImages(frontFile, backFile, form.identityDocType);
       if (createError) {
         setError(createError);
         return;
       }
-    } else if (replacingIds) {
+      if (
+        form.identityDocType === 'B-Form' &&
+        (!form.guardianName.trim() || !form.guardianContact.trim())
+      ) {
+        setError('Guardian name and contact are required when uploading a B-Form');
+        return;
+      }
+    } else if (editingId && replacingIds) {
       const replaceError = validateIdImages(frontFile, backFile, form.identityDocType);
       if (replaceError) {
         setError(replaceError);
@@ -135,17 +142,19 @@ const Students = () => {
       fd.append('email', form.email);
       fd.append('phone', form.phone);
       fd.append('address', form.address);
-      fd.append('identityDocType', form.identityDocType);
       fd.append('enrollmentStatus', form.enrollmentStatus);
-      if (form.identityDocType === 'B-Form') {
-        fd.append('guardianName', form.guardianName);
-        fd.append('guardianContact', form.guardianContact);
+      if (replacingIds || editingId) {
+        fd.append('identityDocType', form.identityDocType);
+        if (form.identityDocType === 'B-Form') {
+          fd.append('guardianName', form.guardianName);
+          fd.append('guardianContact', form.guardianContact);
+        }
+        if (frontFile) fd.append('identityDocFront', frontFile);
+        if (form.identityDocType === 'CNIC' && backFile) {
+          fd.append('identityDocBack', backFile);
+        }
       }
       if (form.password.trim()) fd.append('password', form.password);
-      if (frontFile) fd.append('identityDocFront', frontFile);
-      if (form.identityDocType === 'CNIC' && backFile) {
-        fd.append('identityDocBack', backFile);
-      }
 
       if (editingId) {
         await api.put(`/students/${editingId}`, fd, {
@@ -214,7 +223,7 @@ const Students = () => {
               <td className="px-4 py-3 text-sm font-medium text-navy-900">{s.user?.name}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{s.user?.email}</td>
               <td className="px-4 py-3 text-sm text-gray-600">{s.user?.phone}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{s.identityDocType}</td>
+              <td className="px-4 py-3 text-sm text-gray-600">{s.identityDocType || '—'}</td>
               <td className="px-4 py-3">
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
@@ -303,8 +312,16 @@ const Students = () => {
                 </div>
               )}
 
+              <p className="text-xs text-gray-500">
+                {editingId
+                  ? 'Identity documents are optional when editing — upload only if you want to replace them.'
+                  : 'Identity documents are optional. Students who register themselves must upload CNIC or B-Form on the enrollment form.'}
+              </p>
+
               <div>
-                <label className="mb-1 block text-sm font-medium text-navy-900">Identity Document</label>
+                <label className="mb-1 block text-sm font-medium text-navy-900">
+                  Identity Document {editingId ? '' : '(optional)'}
+                </label>
                 <select
                   value={form.identityDocType}
                   onChange={(e) => {
@@ -321,14 +338,13 @@ const Students = () => {
               <div>
                 <label className="mb-1 block text-sm font-medium text-navy-900">
                   {form.identityDocType === 'B-Form' ? 'B-Form photo' : 'CNIC front photo'}
-                  {editingId ? ' (optional — leave empty to keep current)' : ''}
+                  {editingId ? ' (optional — leave empty to keep current)' : ' (optional)'}
                 </label>
                 <input
                   type="file"
                   accept={ID_IMAGE_ACCEPT}
                   onChange={(e) => setFrontFile(e.target.files[0] || null)}
                   className="w-full text-sm"
-                  required={!editingId}
                 />
               </div>
 
@@ -336,31 +352,30 @@ const Students = () => {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-navy-900">
                     CNIC back photo
-                    {editingId ? ' (optional — leave empty to keep current)' : ''}
+                    {editingId ? ' (optional — leave empty to keep current)' : ' (optional)'}
                   </label>
                   <input
                     type="file"
                     accept={ID_IMAGE_ACCEPT}
                     onChange={(e) => setBackFile(e.target.files[0] || null)}
                     className="w-full text-sm"
-                    required={!editingId}
                   />
                 </div>
               )}
 
-              {form.identityDocType === 'B-Form' && (
+              {form.identityDocType === 'B-Form' && (editingId || frontFile) && (
                 <>
                   <Field
                     label="Guardian Name"
                     value={form.guardianName}
                     onChange={(v) => setForm({ ...form, guardianName: v })}
-                    required
+                    required={Boolean(frontFile)}
                   />
                   <Field
                     label="Guardian Contact"
                     value={form.guardianContact}
                     onChange={(v) => setForm({ ...form, guardianContact: v })}
-                    required
+                    required={Boolean(frontFile)}
                   />
                 </>
               )}
