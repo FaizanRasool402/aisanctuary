@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/ui/Logo';
 import Button from '../components/ui/Button';
+import PasswordInput from '../components/ui/PasswordInput';
 
 const Signup = () => {
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '' });
@@ -51,12 +52,13 @@ const Signup = () => {
               required
             />
             <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
-            <Field
+            <PasswordInput
               label="Password"
-              type="password"
               value={form.password}
               onChange={(v) => setForm({ ...form, password: v })}
               required
+              minLength={6}
+              autoComplete="new-password"
             />
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Creating account…' : 'Sign Up'}
@@ -82,7 +84,6 @@ const Field = ({ label, value, onChange, type = 'text', required }) => (
       type={type}
       value={value}
       required={required}
-      minLength={type === 'password' ? 6 : undefined}
       onChange={(e) => onChange(e.target.value)}
       className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
     />

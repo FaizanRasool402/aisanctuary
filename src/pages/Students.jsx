@@ -5,6 +5,7 @@ import Button from '../components/ui/Button';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { ID_IMAGE_ACCEPT, validateIdImages } from '../utils/idCardUpload';
+import PasswordInput from '../components/ui/PasswordInput';
 
 const emptyForm = {
   name: '',
@@ -282,12 +283,12 @@ const Students = () => {
                 required
               />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
-              <Field
+              <PasswordInput
                 label={editingId ? 'New password (optional)' : 'Temporary Password'}
-                type="password"
                 value={form.password}
                 onChange={(v) => setForm({ ...form, password: v })}
                 required={!editingId}
+                autoComplete="new-password"
               />
               <Field
                 label="Address"

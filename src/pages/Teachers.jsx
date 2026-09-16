@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import Table from '../components/ui/Table';
 import Button from '../components/ui/Button';
+import PasswordInput from '../components/ui/PasswordInput';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -195,12 +196,12 @@ const Teachers = () => {
                 required
               />
               <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} required />
-              <Field
+              <PasswordInput
                 label={editingId ? 'New password (optional)' : 'Temporary Password'}
-                type="password"
                 value={form.password}
                 onChange={(v) => setForm({ ...form, password: v })}
                 required={!editingId}
+                autoComplete="new-password"
               />
               <Field
                 label="Expertise (comma-separated, e.g. MERN Stack Developer, Python)"
