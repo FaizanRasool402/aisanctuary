@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import Table from '../components/ui/Table';
 import Button from '../components/ui/Button';
@@ -6,6 +6,42 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
 const todayYmd = () => new Date().toISOString().slice(0, 10);
+
+const courseKey = (title) => String(title || '').trim();
+
+const CourseFilterButtons = ({ courses, selected, onSelect }) => {
+  if (!courses.length) return null;
+
+  return (
+    <div className="mb-5 flex flex-wrap gap-2">
+      <button
+        type="button"
+        onClick={() => onSelect('all')}
+        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+          selected === 'all'
+            ? 'border-navy-700 bg-navy-800 text-white'
+            : 'border-navy-100 bg-white text-navy-800 hover:border-navy-300'
+        }`}
+      >
+        All
+      </button>
+      {courses.map((title) => (
+        <button
+          key={title}
+          type="button"
+          onClick={() => onSelect(title)}
+          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+            selected === title
+              ? 'border-navy-700 bg-navy-800 text-white'
+              : 'border-navy-100 bg-white text-navy-800 hover:border-navy-300'
+          }`}
+        >
+          {title}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const Attendance = () => {
   const { user } = useAuth();
@@ -22,9 +58,61 @@ const Attendance = () => {
   const [marks, setMarks] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [myStats, setMyStats] = useState([]);
+  const [courseFilter, setCourseFilter] = useState('all');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const staffCourses = useMemo(() => {
+    const titles = new Set();
+    batches.forEach((b) => {
+      const t = courseKey(b.course?.title);
+      if (t) titles.add(t);
+    });
+    alerts.forEach((a) => {
+      const t = courseKey(a.courseTitle);
+      if (t) titles.add(t);
+    });
+    return [...titles].sort((a, b) => a.localeCompare(b));
+  }, [batches, alerts]);
+
+  const studentCourses = useMemo(() => {
+    const titles = new Set();
+    myStats.forEach((s) => {
+      const t = courseKey(s.courseTitle);
+      if (t) titles.add(t);
+    });
+    return [...titles].sort((a, b) => a.localeCompare(b));
+  }, [myStats]);
+
+  const filteredBatches = useMemo(() => {
+    if (courseFilter === 'all') return batches;
+    return batches.filter((b) => courseKey(b.course?.title) === courseFilter);
+  }, [batches, courseFilter]);
+
+  const filteredAlerts = useMemo(() => {
+    if (courseFilter === 'all') return alerts;
+    return alerts.filter((a) => courseKey(a.courseTitle) === courseFilter);
+  }, [alerts, courseFilter]);
+
+  const filteredMyStats = useMemo(() => {
+    if (courseFilter === 'all') return myStats;
+    return myStats.filter((s) => courseKey(s.courseTitle) === courseFilter);
+  }, [myStats, courseFilter]);
+
+  const handleCourseFilter = (next) => {
+    setCourseFilter(next);
+    if (next === 'all') return;
+    const stillValid = batches.some(
+      (b) => String(b._id) === batchId && courseKey(b.course?.title) === next
+    );
+    if (!stillValid) {
+      setBatchId('');
+      setSession(null);
+      setRoster([]);
+      setMarks({});
+    }
+  };
 
   const loadBase = async () => {
     setLoading(true);
@@ -116,12 +204,19 @@ const Attendance = () => {
 
       {isStudent && !loading && (
         <div className="space-y-6">
-          {myStats.length === 0 ? (
+          <CourseFilterButtons
+            courses={studentCourses}
+            selected={courseFilter}
+            onSelect={setCourseFilter}
+          />
+          {filteredMyStats.length === 0 ? (
             <p className="text-sm text-gray-400">
-              No attendance yet. It will appear after your teacher marks a class.
+              {myStats.length === 0
+                ? 'No attendance yet. It will appear after your teacher marks a class.'
+                : 'No attendance for this course.'}
             </p>
           ) : (
-            myStats.map((s) => (
+            filteredMyStats.map((s) => (
               <div
                 key={s.enrollmentId}
                 className="rounded-xl border border-navy-100 bg-white p-5 shadow-card"
@@ -178,6 +273,12 @@ const Attendance = () => {
 
       {!isStudent && !loading && (
         <>
+          <CourseFilterButtons
+            courses={staffCourses}
+            selected={courseFilter}
+            onSelect={handleCourseFilter}
+          />
+
           <div className="mb-6 grid gap-3 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-sm font-medium text-navy-900">Batch</label>
@@ -187,7 +288,7 @@ const Attendance = () => {
                 className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
               >
                 <option value="">Select a batch</option>
-                {batches.map((b) => (
+                {filteredBatches.map((b) => (
                   <option key={b._id} value={b._id}>
                     {b.name} {b.course?.title ? `· ${b.course.title}` : ''}
                   </option>
@@ -253,10 +354,12 @@ const Attendance = () => {
               Student attendance overview
             </h3>
             <p className="mb-3 text-xs text-gray-500">
-              All active enrollments. Below {threshold}% is highlighted in red.
+              {courseFilter === 'all'
+                ? `All active enrollments. Below ${threshold}% is highlighted in red.`
+                : `${courseFilter} only. Below ${threshold}% is highlighted in red.`}
             </p>
             <Table columns={['Student', 'Course', 'Batch', 'Present / classes', '%']}>
-              {alerts.map((a) => (
+              {filteredAlerts.map((a) => (
                 <tr key={a.enrollmentId} className="hover:bg-navy-50/40">
                   <td className="py-3 text-sm font-medium text-navy-900">{a.studentName}</td>
                   <td className="py-3 text-sm text-gray-600">{a.courseTitle}</td>
@@ -273,10 +376,12 @@ const Attendance = () => {
                   </td>
                 </tr>
               ))}
-              {alerts.length === 0 && (
+              {filteredAlerts.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                    No active enrollments yet.
+                    {alerts.length === 0
+                      ? 'No active enrollments yet.'
+                      : 'No enrollments for this course.'}
                   </td>
                 </tr>
               )}
