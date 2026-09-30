@@ -19,6 +19,13 @@ const emptyForm = {
   enrollmentStatus: 'pending',
 };
 
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
 const Students = () => {
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
@@ -31,14 +38,18 @@ const Students = () => {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [deletingId, setDeletingId] = useState('');
 
   const canEdit = user?.role === 'admin';
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (nextStatus = statusFilter, nextSearch = search) => {
     setLoading(true);
     try {
-      const { data } = await api.get('/students', { params: search ? { search } : {} });
+      const params = {};
+      if (nextSearch.trim()) params.search = nextSearch.trim();
+      if (nextStatus && nextStatus !== 'all') params.status = nextStatus;
+      const { data } = await api.get('/students', { params });
       setStudents(data.data);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load students');
@@ -51,6 +62,11 @@ const Students = () => {
     fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleStatusFilter = (value) => {
+    setStatusFilter(value);
+    fetchStudents(value, search);
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -107,7 +123,7 @@ const Students = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    fetchStudents();
+    fetchStudents(statusFilter, search);
   };
 
   const handleSubmit = async (e) => {
@@ -195,6 +211,23 @@ const Students = () => {
 
   return (
     <Layout title="Students">
+      <div className="mb-4 flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => handleStatusFilter(f.value)}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+              statusFilter === f.value
+                ? 'border-navy-700 bg-navy-800 text-white'
+                : 'border-navy-100 bg-white text-navy-800 hover:border-navy-300'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={handleSearch} className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row">
           <input

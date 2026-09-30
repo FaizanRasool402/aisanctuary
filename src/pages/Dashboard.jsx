@@ -2,8 +2,16 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/layout/Layout';
 import StatCard from '../components/ui/StatCard';
 import Button from '../components/ui/Button';
+import Table from '../components/ui/Table';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+
+const formatDate = (value) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString();
+};
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -14,6 +22,7 @@ const Dashboard = () => {
   const [error, setError] = useState('');
   const [newsMsg, setNewsMsg] = useState('');
   const [newsLoading, setNewsLoading] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const sendAiNews = async () => {
     setNewsMsg('');
@@ -157,61 +166,97 @@ const Dashboard = () => {
             />
             <StatCard label="Active Batches" value={summary.batches.total} accent="navy" />
             <StatCard
-              label="Active Enrollments"
-              value={summary.enrollments.active}
-              accent="magenta"
-            />
-            <StatCard
-              label="Completed Enrollments"
+              label="Certified Students"
               value={summary.enrollments.completed}
               accent="cyan"
+              onClick={() => setShowCompleted(true)}
             />
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="rounded-xl border border-navy-100 bg-white p-5 shadow-card">
-              <h3 className="mb-4 text-sm font-semibold text-navy-900">Students by Course</h3>
-              {summary.studentsByCourse.length === 0 ? (
-                <p className="text-sm text-gray-400">No active enrollments yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {summary.studentsByCourse.map((c) => (
-                    <div key={c.courseTitle} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-700">{c.courseTitle}</span>
-                      <span className="rounded-full bg-navy-50 px-2.5 py-0.5 text-xs font-semibold text-navy-600">
-                        {c.count}
-                      </span>
-                    </div>
-                  ))}
+          {showCompleted && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+              <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto overflow-x-hidden rounded-xl bg-white p-6 shadow-xl">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-navy-900">Certified Students</h2>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {summary.enrollments.completed}{' '}
+                      {summary.enrollments.completed === 1 ? 'student' : 'students'} ·{' '}
+                      {(summary.enrollments.completedList || []).length} course
+                      {(summary.enrollments.completedList || []).length === 1 ? '' : 's'} completed
+                    </p>
+                  </div>
+                  <Button type="button" variant="secondary" onClick={() => setShowCompleted(false)}>
+                    Close
+                  </Button>
                 </div>
-              )}
-            </div>
 
-            <div className="rounded-xl border border-navy-100 bg-white p-5 shadow-card">
-              <h3 className="mb-4 text-sm font-semibold text-navy-900">Batch Capacity</h3>
-              {summary.batchFillStats.length === 0 ? (
-                <p className="text-sm text-gray-400">No active batches yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {summary.batchFillStats.map((b) => (
-                    <div key={b.batchName}>
-                      <div className="flex justify-between text-xs text-gray-600 mb-1">
-                        <span>{b.batchName}</span>
+                <Table
+                  scrollable={false}
+                  columns={['Student', 'Course', 'Batch', 'Completed date']}
+                >
+                  {(summary.enrollments.completedList || []).map((e) => (
+                    <tr key={e._id} className="hover:bg-navy-50/40">
+                      <td className="break-words px-3 py-3 text-sm font-medium text-navy-900 md:px-4">
+                        {e.studentName}
+                        {e.studentEmail ? (
+                          <div className="break-all text-xs font-normal text-gray-400">
+                            {e.studentEmail}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="break-words px-3 py-3 text-sm text-gray-600 md:px-4">
+                        {e.courseTitle}
+                      </td>
+                      <td className="break-words px-3 py-3 text-sm text-gray-600 md:px-4">
+                        {e.batchName}
+                      </td>
+                      <td className="break-words px-3 py-3 text-sm text-gray-600 md:px-4">
+                        {formatDate(e.completedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                  {(summary.enrollments.completedList || []).length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">
+                        No certified students yet.
+                      </td>
+                    </tr>
+                  )}
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 rounded-xl border border-navy-100 bg-white p-5 shadow-card">
+            <h3 className="mb-4 text-sm font-semibold text-navy-900">Students by Course</h3>
+            {summary.studentsByCourse.length === 0 ? (
+              <p className="text-sm text-gray-400">No active enrollments yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {summary.studentsByCourse.map((c) => {
+                  const capacity = c.capacity || 0;
+                  const fillPct =
+                    capacity > 0 ? Math.min((c.count / capacity) * 100, 100) : 0;
+                  return (
+                    <div key={c.courseTitle}>
+                      <div className="mb-1 flex justify-between text-xs text-gray-600">
+                        <span>{c.courseTitle}</span>
                         <span>
-                          {b.enrolled}/{b.capacity}
+                          {c.count}/{capacity || '—'}
                         </span>
                       </div>
                       <div className="h-2 w-full rounded-full bg-navy-50">
                         <div
                           className="h-2 rounded-full bg-brand-gradient"
-                          style={{ width: `${Math.min((b.enrolled / b.capacity) * 100, 100)}%` }}
+                          style={{ width: `${fillPct}%` }}
                         />
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="mt-6 rounded-xl border border-navy-100 bg-white p-5 shadow-card">
