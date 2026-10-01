@@ -1,9 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/layout/Layout';
-import Table from '../components/ui/Table';
 import Button from '../components/ui/Button';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { ChartIcon, CheckCircleIcon, ClockIcon, SearchIcon, UsersIcon } from '../components/ui/icons';
+import {
+  DataTable,
+  ExportMenu,
+  PageHeader,
+  Pagination,
+  Panel,
+  SearchInput,
+  StatTile,
+  StatusBadge,
+  TableMessage,
+  downloadCsv,
+  usePagination,
+} from '../components/ui/kit';
 
 const todayYmd = () => new Date().toISOString().slice(0, 10);
 
@@ -13,14 +26,14 @@ const CourseFilterButtons = ({ courses, selected, onSelect }) => {
   if (!courses.length) return null;
 
   return (
-    <div className="mb-5 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       <button
         type="button"
         onClick={() => onSelect('all')}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+        className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
           selected === 'all'
-            ? 'border-navy-700 bg-navy-800 text-white'
-            : 'border-navy-100 bg-white text-navy-800 hover:border-navy-300'
+            ? 'border-navy-800 bg-navy-800 text-white shadow-sm'
+            : 'border-slate-200 bg-white text-navy-900 hover:bg-slate-50'
         }`}
       >
         All
@@ -30,10 +43,10 @@ const CourseFilterButtons = ({ courses, selected, onSelect }) => {
           key={title}
           type="button"
           onClick={() => onSelect(title)}
-          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
             selected === title
-              ? 'border-navy-700 bg-navy-800 text-white'
-              : 'border-navy-100 bg-white text-navy-800 hover:border-navy-300'
+              ? 'border-navy-800 bg-navy-800 text-white shadow-sm'
+              : 'border-slate-200 bg-white text-navy-900 hover:bg-slate-50'
           }`}
         >
           {title}
@@ -194,201 +207,327 @@ const Attendance = () => {
     }
   };
 
+  const [overviewSearch, setOverviewSearch] = useState('');
+
+  // Present/absent counts for the loaded class, based on the marks currently selected
+  const statusById = useMemo(() => {
+    const map = {};
+    statuses.forEach((s) => {
+      map[s._id] = `${s.code || ''} ${s.label || ''}`.toLowerCase();
+    });
+    return map;
+  }, [statuses]);
+
+  const classStats = useMemo(() => {
+    const marked = roster.map((r) => statusById[marks[r.studentId]] || '');
+    return {
+      total: roster.length,
+      present: marked.filter((s) => s.includes('present')).length,
+      absent: marked.filter((s) => s.includes('absent')).length,
+    };
+  }, [roster, marks, statusById]);
+
+  const overviewRows = useMemo(() => {
+    const term = overviewSearch.trim().toLowerCase();
+    if (!term) return filteredAlerts;
+    return filteredAlerts.filter((a) =>
+      [a.studentName, a.courseTitle, a.batchName].filter(Boolean).some((v) => String(v).toLowerCase().includes(term))
+    );
+  }, [filteredAlerts, overviewSearch]);
+
+  const avgAttendance = useMemo(() => {
+    const vals = filteredAlerts.map((a) => a.percent).filter((p) => p != null);
+    return vals.length ? Math.round((vals.reduce((x, y) => x + y, 0) / vals.length) * 10) / 10 : null;
+  }, [filteredAlerts]);
+
+  const overviewPager = usePagination(overviewRows, 10);
+  const share = (n) => (classStats.total ? `${Math.round((n / classStats.total) * 1000) / 10}%` : null);
+
+  const exportOverview = (rows, suffix) =>
+    downloadCsv(
+      `attendance-${suffix}`,
+      ['Student', 'Course', 'Batch', 'Present', 'Classes', 'Attendance %', 'Status'],
+      rows.map((a) => [
+        a.studentName,
+        a.courseTitle,
+        a.batchName,
+        a.presentCount,
+        a.totalSessions,
+        a.percent == null ? '' : a.percent,
+        a.percent == null ? 'No classes yet' : a.belowThreshold ? 'Low' : 'Good',
+      ])
+    );
+
+  const barColor = (p) => (p < 50 ? 'bg-red-500' : p < threshold ? 'bg-amber-400' : 'bg-emerald-500');
+  const textColor = (p) => (p < 50 ? 'text-red-600' : p < threshold ? 'text-amber-600' : 'text-emerald-600');
+
+  const pageTitle = isStudent ? 'My Attendance' : "Today's Class";
+
   return (
-    <Layout title={isStudent ? 'My attendance' : "Today's class"}>
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
-      )}
+    <Layout title={pageTitle}>
+      <div className="space-y-5">
+        <PageHeader
+          title={pageTitle}
+          subtitle={
+            isStudent
+              ? 'Your attendance for each course and batch.'
+              : "View and track student attendance for today's class by course and batch."
+          }
+        />
 
-      {loading && <p className="text-gray-500">Loading attendance…</p>}
+        {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
-      {isStudent && !loading && (
-        <div className="space-y-6">
-          <CourseFilterButtons
-            courses={studentCourses}
-            selected={courseFilter}
-            onSelect={setCourseFilter}
-          />
-          {filteredMyStats.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              {myStats.length === 0
-                ? 'No attendance yet. It will appear after your teacher marks a class.'
-                : 'No attendance for this course.'}
-            </p>
-          ) : (
-            filteredMyStats.map((s) => (
-              <div
-                key={s.enrollmentId}
-                className="rounded-xl border border-navy-100 bg-white p-5 shadow-card"
-              >
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <h3 className="text-sm font-semibold text-navy-900">
-                    {s.courseTitle} · {s.batchName}
-                  </h3>
-                  <div className="flex flex-wrap gap-2 text-sm">
-                    <span className="rounded-lg bg-navy-50 px-3 py-1.5 text-navy-800">
-                      Present / classes:{' '}
-                      <strong>
-                        {s.presentCount ?? 0}/{s.totalSessions ?? 0}
-                      </strong>
-                    </span>
-                    <span
-                      className={`rounded-lg px-3 py-1.5 font-semibold ${
-                        s.belowThreshold
-                          ? 'bg-red-50 text-red-700'
-                          : 'bg-green-50 text-green-700'
-                      }`}
-                    >
-                      Attendance:{' '}
-                      {s.percent == null ? 'No classes yet' : `${s.percent}%`}
-                      {s.belowThreshold ? ` (below ${s.threshold}%)` : ''}
-                    </span>
+        {loading && <p className="text-slate-500">Loading attendance…</p>}
+
+        {isStudent && !loading && (
+          <div className="space-y-5">
+            <CourseFilterButtons courses={studentCourses} selected={courseFilter} onSelect={setCourseFilter} />
+            {filteredMyStats.length === 0 ? (
+              <Panel className="p-8 text-center text-sm text-slate-400">
+                {myStats.length === 0
+                  ? 'No attendance yet. It will appear after your teacher marks a class.'
+                  : 'No attendance for this course.'}
+              </Panel>
+            ) : (
+              filteredMyStats.map((s) => (
+                <Panel key={s.enrollmentId}>
+                  <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-navy-900">{s.courseTitle}</h3>
+                      <p className="text-sm text-slate-500">{s.batchName}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-sm">
+                      <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-navy-800">
+                        Present / classes:{' '}
+                        <strong>
+                          {s.presentCount ?? 0}/{s.totalSessions ?? 0}
+                        </strong>
+                      </span>
+                      <span
+                        className={`rounded-lg px-3 py-1.5 font-semibold ${
+                          s.belowThreshold ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        Attendance: {s.percent == null ? 'No classes yet' : `${s.percent}%`}
+                        {s.belowThreshold ? ` (below ${s.threshold}%)` : ''}
+                      </span>
+                    </div>
                   </div>
-                </div>
-
-                <Table columns={['Date', 'Status']}>
-                  {[...(s.records || [])]
-                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-                    .map((r) => (
-                      <tr key={`${s.enrollmentId}-${r.date}-${r.code}`}>
-                        <td className="py-3 text-sm text-gray-600">{r.date || '—'}</td>
-                        <td className="py-3 text-sm capitalize text-gray-700">
-                          {r.status || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  {(s.records || []).length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="px-4 py-8 text-center text-sm text-gray-400">
-                        No class dates marked yet. Percentage will update after attendance is saved.
-                      </td>
-                    </tr>
+                  {s.percent != null && (
+                    <div className="px-5 pb-4">
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className={`h-2 rounded-full ${barColor(s.percent)}`} style={{ width: `${Math.min(100, s.percent)}%` }} />
+                      </div>
+                    </div>
                   )}
-                </Table>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+                  <DataTable columns={['Date', 'Status']}>
+                    {[...(s.records || [])]
+                      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                      .map((r) => (
+                        <tr key={`${s.enrollmentId}-${r.date}-${r.code}`}>
+                          <td className="py-3 pl-4 pr-3 text-slate-600">{r.date || '—'}</td>
+                          <td className="py-3 pr-4">
+                            <StatusBadge
+                              tone={/present/i.test(`${r.code} ${r.status}`) ? 'green' : /absent/i.test(`${r.code} ${r.status}`) ? 'red' : 'amber'}
+                            >
+                              {r.status || '—'}
+                            </StatusBadge>
+                          </td>
+                        </tr>
+                      ))}
+                    {(s.records || []).length === 0 && (
+                      <TableMessage colSpan={2}>
+                        No class dates marked yet. Percentage will update after attendance is saved.
+                      </TableMessage>
+                    )}
+                  </DataTable>
+                </Panel>
+              ))
+            )}
+          </div>
+        )}
 
-      {!isStudent && !loading && (
-        <>
-          <CourseFilterButtons
-            courses={staffCourses}
-            selected={courseFilter}
-            onSelect={handleCourseFilter}
-          />
+        {!isStudent && !loading && (
+          <>
+            <CourseFilterButtons courses={staffCourses} selected={courseFilter} onSelect={handleCourseFilter} />
 
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-navy-900">Batch</label>
-              <select
-                value={batchId}
-                onChange={(e) => setBatchId(e.target.value)}
-                className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <label className="block rounded-xl border border-slate-100 bg-white p-3 shadow-card">
+                <span className="mb-1 block text-sm font-medium text-navy-900">Select Batch</span>
+                <select
+                  value={batchId}
+                  onChange={(e) => setBatchId(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-400 focus:outline-none"
+                >
+                  <option value="">Select a batch</option>
+                  {filteredBatches.map((b) => (
+                    <option key={b._id} value={b._id}>
+                      {b.name} {b.course?.title ? `· ${b.course.title}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block rounded-xl border border-slate-100 bg-white p-3 shadow-card">
+                <span className="mb-1 block text-sm font-medium text-navy-900">Class Date</span>
+                <input
+                  type="date"
+                  value={sessionDate}
+                  onChange={(e) => setSessionDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-navy-900 focus:border-blue-400 focus:outline-none"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={loadRoster}
+                disabled={!batchId}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-blue-600 px-8 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <option value="">Select a batch</option>
-                {filteredBatches.map((b) => (
-                  <option key={b._id} value={b._id}>
-                    {b.name} {b.course?.title ? `· ${b.course.title}` : ''}
-                  </option>
-                ))}
-              </select>
+                <SearchIcon className="h-4 w-4" />
+                Load Class
+              </button>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-navy-900">Class date</label>
-              <input
-                type="date"
-                value={sessionDate}
-                onChange={(e) => setSessionDate(e.target.value)}
-                className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none"
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+              <StatTile icon={UsersIcon} tone="blue" label="Total Students" value={roster.length ? classStats.total : '—'} sublabel={roster.length ? 'In this class' : 'Load a class to see'} />
+              <StatTile
+                icon={CheckCircleIcon}
+                tone="green"
+                label="Present"
+                value={roster.length ? classStats.present : '—'}
+                sublabel="Marked present"
+                badge={share(classStats.present) && <StatusBadge tone="green" dot={false}>{share(classStats.present)}</StatusBadge>}
+              />
+              <StatTile
+                icon={ClockIcon}
+                tone="orange"
+                label="Absent"
+                value={roster.length ? classStats.absent : '—'}
+                sublabel="Marked absent"
+                badge={share(classStats.absent) && <StatusBadge tone="red" dot={false}>{share(classStats.absent)}</StatusBadge>}
+              />
+              <StatTile
+                icon={ChartIcon}
+                tone="purple"
+                label="Average Attendance"
+                value={avgAttendance == null ? '—' : `${avgAttendance}%`}
+                sublabel={courseFilter === 'all' ? 'Across all students' : courseFilter}
               />
             </div>
-            <div className="flex items-end">
-              <Button type="button" onClick={loadRoster} disabled={!batchId} className="w-full sm:w-auto">
-                Load class
-              </Button>
-            </div>
-          </div>
 
-          {roster.length > 0 && (
-            <div className="mb-8">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-gray-500">
-                  {roster.length} student(s) · mark Present, Absent, or Leave
-                </p>
-                {canMark && (
-                  <Button type="button" onClick={handleSave} disabled={saving}>
-                    {saving ? 'Saving…' : 'Save attendance'}
-                  </Button>
-                )}
+            {roster.length > 0 && (
+              <Panel>
+                <div className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-navy-900">Mark attendance</h3>
+                    <p className="text-xs text-slate-500">{roster.length} student(s) · mark Present, Absent, or Leave</p>
+                  </div>
+                  {canMark && (
+                    <Button type="button" onClick={handleSave} disabled={saving} className="!bg-blue-600 hover:!bg-blue-700">
+                      {saving ? 'Saving…' : 'Save attendance'}
+                    </Button>
+                  )}
+                </div>
+                <DataTable columns={['#', 'Student', 'Email', 'Status']}>
+                  {roster.map((r, i) => (
+                    <tr key={r.studentId} className="hover:bg-slate-50/60">
+                      <td className="py-3 pl-4 pr-3 text-slate-500">{i + 1}</td>
+                      <td className="py-3 pr-3">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-navy-900">{r.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-3 text-slate-600">{r.email}</td>
+                      <td className="py-3 pr-4">
+                        <select
+                          value={marks[r.studentId] || ''}
+                          disabled={!canMark}
+                          onChange={(e) => setMarks((prev) => ({ ...prev, [r.studentId]: e.target.value }))}
+                          className="w-full min-w-[8rem] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none disabled:bg-slate-50"
+                        >
+                          <option value="">Select</option>
+                          {statuses.map((s) => (
+                            <option key={s._id} value={s._id}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </DataTable>
+              </Panel>
+            )}
+
+            <Panel>
+              <div className="flex flex-col gap-3 p-4 md:flex-row md:items-end">
+                <div className="md:mr-auto">
+                  <h3 className="text-base font-semibold text-navy-900">Student attendance overview</h3>
+                  <p className="text-xs text-slate-500">
+                    {courseFilter === 'all'
+                      ? `All active enrollments. Below ${threshold}% is highlighted in red.`
+                      : `${courseFilter} only. Below ${threshold}% is highlighted in red.`}
+                  </p>
+                </div>
+                <ExportMenu
+                  options={[
+                    { label: `Current view (${overviewRows.length}) · CSV`, onSelect: () => exportOverview(overviewRows, 'filtered') },
+                    { label: `All (${alerts.length}) · CSV`, onSelect: () => exportOverview(alerts, 'all') },
+                  ]}
+                />
+                <SearchInput value={overviewSearch} onChange={setOverviewSearch} placeholder="Search by student name…" className="md:w-72" />
               </div>
-              <Table columns={['Student', 'Email', 'Status']}>
-                {roster.map((r) => (
-                  <tr key={r.studentId} className="hover:bg-navy-50/40">
-                    <td className="py-3 text-sm font-medium text-navy-900">{r.name}</td>
-                    <td className="py-3 text-sm text-gray-600">{r.email}</td>
-                    <td className="py-3">
-                      <select
-                        value={marks[r.studentId] || ''}
-                        disabled={!canMark}
-                        onChange={(e) => setMarks((prev) => ({ ...prev, [r.studentId]: e.target.value }))}
-                        className="w-full min-w-[8rem] rounded-lg border border-navy-100 px-3 py-2 text-sm focus:border-navy-500 focus:outline-none disabled:bg-gray-50"
-                      >
-                        <option value="">Select</option>
-                        {statuses.map((s) => (
-                          <option key={s._id} value={s._id}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
+              <DataTable columns={['#', 'Student', 'Course', 'Batch', 'Present / Classes', 'Attendance', 'Status']}>
+                {overviewPager.pageRows.map((a, i) => (
+                  <tr key={a.enrollmentId} className="hover:bg-slate-50/60">
+                    <td className="py-3 pl-4 pr-3 text-slate-500">{overviewPager.offset + i + 1}</td>
+                    <td className="py-3 pr-3">
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-navy-900">{a.studentName}</span>
+                      </div>
+                    </td>
+                    <td className="max-w-[10rem] whitespace-normal py-3 pr-3 text-slate-600">{a.courseTitle}</td>
+                    <td className="max-w-[10rem] whitespace-normal py-3 pr-3 text-slate-600">{a.batchName}</td>
+                    <td className="py-3 pr-3 text-slate-600">
+                      {a.presentCount} / {a.totalSessions}
+                    </td>
+                    <td className="py-3 pr-3">
+                      {a.percent == null ? (
+                        <span className="text-slate-400">No classes yet</span>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className="h-2 w-28 rounded-full bg-slate-100">
+                            <div className={`h-2 rounded-full ${barColor(a.percent)}`} style={{ width: `${Math.min(100, a.percent)}%` }} />
+                          </div>
+                          <span className={`text-xs font-semibold ${textColor(a.percent)}`}>{a.percent}%</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4">
+                      {a.percent == null ? (
+                        <StatusBadge tone="gray" dot={false}>—</StatusBadge>
+                      ) : a.belowThreshold ? (
+                        <StatusBadge tone="red" dot={false}>Low</StatusBadge>
+                      ) : (
+                        <StatusBadge tone="green" dot={false}>Good</StatusBadge>
+                      )}
                     </td>
                   </tr>
                 ))}
-              </Table>
-            </div>
-          )}
-
-          <div>
-            <h3 className="mb-3 text-sm font-semibold text-navy-900">
-              Student attendance overview
-            </h3>
-            <p className="mb-3 text-xs text-gray-500">
-              {courseFilter === 'all'
-                ? `All active enrollments. Below ${threshold}% is highlighted in red.`
-                : `${courseFilter} only. Below ${threshold}% is highlighted in red.`}
-            </p>
-            <Table columns={['Student', 'Course', 'Batch', 'Present / classes', '%']}>
-              {filteredAlerts.map((a) => (
-                <tr key={a.enrollmentId} className="hover:bg-navy-50/40">
-                  <td className="py-3 text-sm font-medium text-navy-900">{a.studentName}</td>
-                  <td className="py-3 text-sm text-gray-600">{a.courseTitle}</td>
-                  <td className="py-3 text-sm text-gray-600">{a.batchName}</td>
-                  <td className="py-3 text-sm text-gray-600">
-                    {a.presentCount}/{a.totalSessions}
-                  </td>
-                  <td
-                    className={`py-3 text-sm font-semibold ${
-                      a.belowThreshold ? 'text-red-600' : 'text-navy-700'
-                    }`}
-                  >
-                    {a.percent == null ? 'No classes yet' : `${a.percent}%`}
-                  </td>
-                </tr>
-              ))}
-              {filteredAlerts.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                {overviewRows.length === 0 && (
+                  <TableMessage colSpan={7}>
                     {alerts.length === 0
                       ? 'No active enrollments yet.'
-                      : 'No enrollments for this course.'}
-                  </td>
-                </tr>
-              )}
-            </Table>
-          </div>
-        </>
-      )}
+                      : filteredAlerts.length === 0
+                        ? 'No enrollments for this course.'
+                        : 'No matching students.'}
+                  </TableMessage>
+                )}
+              </DataTable>
+              <Pagination pager={overviewPager} noun="students" />
+            </Panel>
+          </>
+        )}
+      </div>
     </Layout>
   );
 };

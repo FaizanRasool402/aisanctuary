@@ -1,13 +1,16 @@
-import React, { useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Logo from '../ui/Logo';
-import { navByRole, navLinkClass } from './navConfig';
+import { ChevronDownIcon, CloseIcon, LogoutIcon, MenuIcon } from '../ui/icons';
+import { navByRole } from './navConfig';
+import NavLinks from './NavLinks';
 
-const Navbar = ({ title, menuOpen, onToggleMenu, onCloseMenu }) => {
+const Navbar = ({ menuOpen, onToggleMenu, onCloseMenu }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const links = navByRole[user?.role] || [];
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -27,48 +30,76 @@ const Navbar = ({ title, menuOpen, onToggleMenu, onCloseMenu }) => {
   }, [menuOpen, onCloseMenu]);
 
   const handleLogout = () => {
+    setUserMenuOpen(false);
     onCloseMenu();
     logout();
     navigate('/login');
   };
 
+  const initial = user?.name?.charAt(0).toUpperCase();
+
   return (
-    <header className="relative border-b border-navy-100 bg-white">
-      <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-6 md:py-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+    <header className="relative border-b border-slate-100 bg-white">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-8">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
             onClick={onToggleMenu}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-navy-100 text-navy-700 md:hidden"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-navy-700 md:hidden"
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
           >
-            {menuOpen ? (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            ) : (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
+            {menuOpen ? <CloseIcon className="h-5 w-5" /> : <MenuIcon className="h-5 w-5" />}
           </button>
-          <h1 className="truncate text-base font-semibold text-navy-900 md:text-xl">{title}</h1>
+          <div className="md:hidden">
+            <Logo size={32} />
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 md:gap-3">
-          <div className="hidden text-right sm:block">
-            <div className="text-sm font-medium text-navy-900">{user?.name}</div>
-            <div className="max-w-[180px] truncate text-xs text-gray-500">{user?.email}</div>
-          </div>
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-gradient text-sm font-semibold text-white">
-            {user?.name?.charAt(0).toUpperCase()}
-          </div>
+
+        <div className="relative shrink-0">
           <button
-            onClick={handleLogout}
-            className="rounded-lg border border-navy-100 px-2.5 py-1.5 text-xs font-medium text-navy-600 transition-colors hover:bg-navy-50 md:ml-2 md:px-3 md:text-sm"
+            type="button"
+            onClick={() => setUserMenuOpen((o) => !o)}
+            className="flex items-center gap-3 rounded-xl px-1.5 py-1 transition hover:bg-slate-50"
+            aria-haspopup="menu"
+            aria-expanded={userMenuOpen}
           >
-            Logout
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-cyan-400 text-sm font-semibold text-white">
+              {initial}
+            </span>
+            <span className="hidden text-left sm:block">
+              <span className="block text-sm font-semibold text-navy-900">{user?.name}</span>
+              <span className="block max-w-[200px] truncate text-xs text-slate-500">{user?.email}</span>
+            </span>
+            <ChevronDownIcon className="h-4 w-4 text-slate-500" />
           </button>
+
+          {userMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setUserMenuOpen(false)} />
+              <div
+                role="menu"
+                className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-xl border border-slate-100 bg-white text-sm shadow-lg"
+              >
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <p className="truncate font-semibold text-navy-900">{user?.name}</p>
+                  <p className="truncate text-xs text-slate-500">{user?.email}</p>
+                  <span className="mt-2 inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium capitalize text-blue-700">
+                    {user?.role}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-red-600 hover:bg-red-50"
+                >
+                  <LogoutIcon className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -81,32 +112,34 @@ const Navbar = ({ title, menuOpen, onToggleMenu, onCloseMenu }) => {
             onClick={onCloseMenu}
           />
           <div className="fixed inset-y-0 left-0 z-50 flex w-[min(18rem,85vw)] flex-col bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-navy-100 px-4 py-4">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4">
               <Logo />
               <button
                 type="button"
                 onClick={onCloseMenu}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-navy-100 text-navy-700"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-navy-700"
                 aria-label="Close menu"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
+                <CloseIcon className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-              {links.map((link) => (
-                <NavLink key={link.to} to={link.to} className={navLinkClass} onClick={onCloseMenu}>
-                  {link.label}
-                </NavLink>
-              ))}
-            </nav>
-            <div className="border-t border-navy-100 px-4 py-3">
+            <NavLinks links={links} onNavigate={onCloseMenu} />
+            <div className="border-t border-slate-100 px-4 py-3">
               <p className="text-sm font-medium text-navy-900">{user?.name}</p>
-              <p className="truncate text-xs text-gray-500">{user?.email}</p>
-              <span className="mt-2 inline-block rounded-full bg-navy-50 px-2.5 py-1 text-xs font-medium capitalize text-navy-600">
-                {user?.role}
-              </span>
+              <p className="truncate text-xs text-slate-500">{user?.email}</p>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="inline-block rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium capitalize text-blue-700">
+                  {user?.role}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-red-600"
+                >
+                  <LogoutIcon className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -1,30 +1,20 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
 import Logo from '../ui/Logo';
 import { useAuth } from '../../context/AuthContext';
-import { navByRole, navLinkClass } from './navConfig';
+import { navByRole } from './navConfig';
+import NavLinks, { PromoCard } from './NavLinks';
 
 const Sidebar = () => {
   const { user } = useAuth();
   const links = navByRole[user?.role] || [];
 
   return (
-    <aside className="hidden md:flex md:w-64 md:flex-col md:shrink-0 border-r border-navy-100 bg-white">
-      <div className="px-5 py-5 border-b border-navy-100">
+    <aside className="hidden border-r border-slate-100 bg-white md:flex md:w-64 md:shrink-0 md:flex-col">
+      <div className="border-b border-slate-100 px-6 py-5">
         <Logo />
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {links.map((link) => (
-          <NavLink key={link.to} to={link.to} className={navLinkClass}>
-            {link.label}
-          </NavLink>
-        ))}
-      </nav>
-      <div className="px-4 py-3 border-t border-navy-100">
-        <span className="inline-block rounded-full bg-navy-50 px-2.5 py-1 text-xs font-medium text-navy-600 capitalize">
-          {user?.role}
-        </span>
-      </div>
+      <NavLinks links={links} />
+      <PromoCard role={user?.role} />
     </aside>
   );
 };

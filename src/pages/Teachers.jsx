@@ -1,10 +1,45 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/layout/Layout';
-import Table from '../components/ui/Table';
 import Button from '../components/ui/Button';
 import PasswordInput from '../components/ui/PasswordInput';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import {
+  BookIcon,
+  EditIcon,
+  EyeIcon,
+  PlusIcon,
+  PowerIcon,
+  UserCheckIcon,
+  UsersIcon,
+  UserXIcon,
+} from '../components/ui/icons';
+import {
+  Checkbox,
+  DataTable,
+  Detail,
+  ExportMenu,
+  FilterSelect,
+  IconButton,
+  Modal,
+  PageHeader,
+  Pagination,
+  Panel,
+  PrimaryButton,
+  ResetButton,
+  SearchInput,
+  SelectionBar,
+  StatTile,
+  StatusBadge,
+  TableMessage,
+  Toolbar,
+  downloadCsv,
+  formatDate,
+  trendOf,
+  uniqueOptions,
+  usePagination,
+  useSelection,
+} from '../components/ui/kit';
 
 const emptyForm = { name: '', email: '', phone: '', password: '', expertise: '' };
 
@@ -105,79 +140,255 @@ const Teachers = () => {
     }
   };
 
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [expertiseFilter, setExpertiseFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name-asc');
+  const [viewing, setViewing] = useState(null);
+  const sel = useSelection();
+
+  const expertiseOptions = useMemo(
+    () => uniqueOptions(teachers.flatMap((t) => (t.expertise || []).map((e) => e.trim()))),
+    [teachers]
+  );
+
+  const stats = useMemo(
+    () => ({
+      total: trendOf(teachers),
+      active: trendOf(teachers, (t) => t.isActive),
+      inactive: trendOf(teachers, (t) => !t.isActive),
+      expertise: expertiseOptions.length,
+    }),
+    [teachers, expertiseOptions]
+  );
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const list = teachers.filter((t) => {
+      if (statusFilter === 'active' && !t.isActive) return false;
+      if (statusFilter === 'inactive' && t.isActive) return false;
+      if (expertiseFilter !== 'all' && !(t.expertise || []).some((e) => e.trim() === expertiseFilter)) return false;
+      if (!term) return true;
+      return [t.user?.name, t.user?.email, t.user?.phone, ...(t.expertise || [])]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(term));
+    });
+    const byName = (a, b) => (a.user?.name || '').localeCompare(b.user?.name || '');
+    const sorters = {
+      'name-asc': byName,
+      'name-desc': (a, b) => byName(b, a),
+      newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+      oldest: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+    };
+    return [...list].sort(sorters[sortBy]);
+  }, [teachers, search, statusFilter, expertiseFilter, sortBy]);
+
+  const pager = usePagination(filtered, 10);
+  const pageIds = pager.pageRows.map((t) => t._id);
+
+  const exportRows = (rows, suffix) =>
+    downloadCsv(
+      `teachers-${suffix}`,
+      ['Name', 'Email', 'Phone', 'Expertise', 'Status', 'Joined'],
+      rows.map((t) => [
+        t.user?.name,
+        t.user?.email,
+        t.user?.phone,
+        (t.expertise || []).join('; '),
+        t.isActive ? 'Active' : 'Inactive',
+        formatDate(t.createdAt),
+      ])
+    );
+
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setExpertiseFilter('all');
+    setSortBy('name-asc');
+  };
+
+  const selectedRows = teachers.filter((t) => sel.selected.has(t._id));
+
+  const columns = [
+    <Checkbox key="all" checked={sel.allSelected(pageIds)} onChange={() => sel.togglePage(pageIds)} label="Select all on this page" />,
+    '#',
+    'Teacher',
+    'Email',
+    'Phone',
+    'Expertise',
+    'Status',
+    'Actions',
+  ];
+
   return (
     <Layout title="Teachers">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-500">{teachers.length} teacher(s)</p>
-        {canEdit && <Button onClick={openCreate}>+ Add Teacher</Button>}
+      <div className="space-y-5">
+        <PageHeader
+          title="Teachers"
+          subtitle="Manage your teaching staff, their expertise and account status."
+          actions={
+            <>
+              <ExportMenu
+                options={[
+                  { label: `Current view (${filtered.length}) · CSV`, onSelect: () => exportRows(filtered, 'filtered') },
+                  { label: `All teachers (${teachers.length}) · CSV`, onSelect: () => exportRows(teachers, 'all') },
+                  {
+                    label: `Selected (${selectedRows.length}) · CSV`,
+                    disabled: selectedRows.length === 0,
+                    onSelect: () => exportRows(selectedRows, 'selected'),
+                  },
+                ]}
+              />
+              {canEdit && (
+                <PrimaryButton icon={PlusIcon} onClick={openCreate}>
+                  Add Teacher
+                </PrimaryButton>
+              )}
+            </>
+          }
+        />
+
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <StatTile icon={UsersIcon} tone="blue" label="Total Teachers" value={stats.total.value} change={stats.total.change} sublabel="All registered teachers" />
+          <StatTile icon={UserCheckIcon} tone="green" label="Active Teachers" value={stats.active.value} change={stats.active.change} sublabel="Currently active" />
+          <StatTile icon={UserXIcon} tone="purple" label="Inactive Teachers" value={stats.inactive.value} change={stats.inactive.change} sublabel="Not active" />
+          <StatTile icon={BookIcon} tone="orange" label="Expertise Areas" value={stats.expertise} sublabel="Different skill areas" />
+        </div>
+
+        {error && !showForm && (
+          <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+        )}
+
+        <Panel>
+          <Toolbar>
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by name, email, or expertise…" className="xl:flex-1" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:flex xl:items-end">
+              <FilterSelect
+                value={statusFilter}
+                onChange={setStatusFilter}
+                allLabel="All Statuses"
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'inactive', label: 'Inactive' },
+                ]}
+                className="self-end xl:w-36"
+              />
+              <FilterSelect
+                value={expertiseFilter}
+                onChange={setExpertiseFilter}
+                allLabel="All Expertise"
+                options={expertiseOptions}
+                className="self-end xl:w-44"
+              />
+              <FilterSelect
+                label="Sort by"
+                value={sortBy}
+                onChange={setSortBy}
+                options={[
+                  { value: 'name-asc', label: 'Name (A-Z)' },
+                  { value: 'name-desc', label: 'Name (Z-A)' },
+                  { value: 'newest', label: 'Newest first' },
+                  { value: 'oldest', label: 'Oldest first' },
+                ]}
+                className="xl:w-40"
+              />
+            </div>
+            <ResetButton onClick={resetFilters} />
+          </Toolbar>
+
+          <SelectionBar count={sel.selected.size} onExport={() => exportRows(selectedRows, 'selected')} onClear={sel.clear} />
+
+          <DataTable columns={columns}>
+            {loading ? (
+              <TableMessage colSpan={8}>Loading teachers…</TableMessage>
+            ) : pager.pageRows.length === 0 ? (
+              <TableMessage colSpan={8}>No teachers found.</TableMessage>
+            ) : (
+              pager.pageRows.map((t, i) => (
+                <tr key={t._id} className={sel.selected.has(t._id) ? 'bg-blue-50/40' : 'hover:bg-slate-50/60'}>
+                  <td className="py-3 pl-4 pr-3">
+                    <Checkbox checked={sel.selected.has(t._id)} onChange={() => sel.toggle(t._id)} label={`Select ${t.user?.name || 'teacher'}`} />
+                  </td>
+                  <td className="py-3 pr-3 text-slate-500">{pager.offset + i + 1}</td>
+                  <td className="py-3 pr-3">
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-navy-900">{t.user?.name}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 pr-3 text-slate-600">{t.user?.email}</td>
+                  <td className="py-3 pr-3 text-slate-600">{t.user?.phone || '—'}</td>
+                  <td className="py-3 pr-3">
+                    <div className="flex max-w-[18rem] flex-wrap gap-1.5 whitespace-normal">
+                      {(t.expertise || []).length === 0 && <span className="text-slate-400">—</span>}
+                      {(t.expertise || []).map((ex) => (
+                        <span key={ex} className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                          {ex}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="py-3 pr-3">
+                    <StatusBadge tone={t.isActive ? 'green' : 'gray'}>{t.isActive ? 'Active' : 'Inactive'}</StatusBadge>
+                  </td>
+                  <td className="py-3 pr-4">
+                    <div className="flex gap-2">
+                      {canEdit && <IconButton label="Edit teacher" icon={EditIcon} onClick={() => openEdit(t)} />}
+                      <IconButton label="View details" icon={EyeIcon} onClick={() => setViewing(t)} />
+                      {canEdit && (
+                        <IconButton
+                          label={t.isActive ? 'Deactivate teacher' : 'Activate teacher'}
+                          icon={PowerIcon}
+                          tone={t.isActive ? 'danger' : 'success'}
+                          onClick={() => toggleStatus(t)}
+                        />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </DataTable>
+          <Pagination pager={pager} noun="teachers" />
+        </Panel>
       </div>
 
-      {error && !showForm && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
-      )}
-
-      {loading ? (
-        <p className="text-gray-500">Loading teachers…</p>
-      ) : (
-        <Table columns={['Name', 'Email', 'Phone', 'Expertise', 'Status', canEdit ? 'Actions' : '']}>
-          {teachers.map((t) => (
-            <tr key={t._id} className="hover:bg-navy-50/40">
-              <td className="px-4 py-3 text-sm font-medium text-navy-900">{t.user?.name}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{t.user?.email}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">{t.user?.phone}</td>
-              <td className="px-4 py-3 text-sm text-gray-600">
-                <div className="flex flex-wrap gap-1">
-                  {t.expertise?.map((ex) => (
-                    <span key={ex} className="rounded-full bg-navy-50 px-2 py-0.5 text-xs text-navy-600">
-                      {ex}
-                    </span>
-                  ))}
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    t.isActive ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
-                  }`}
-                >
-                  {t.isActive ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              {canEdit && (
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(t)}
-                      className="text-xs font-medium text-navy-600 hover:underline"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleStatus(t)}
-                      className="text-xs font-medium text-navy-600 hover:underline"
-                    >
-                      {t.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                  </div>
-                </td>
-              )}
-            </tr>
-          ))}
-          {teachers.length === 0 && (
-            <tr>
-              <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
-                No teachers found.
-              </td>
-            </tr>
-          )}
-        </Table>
+      {viewing && (
+        <Modal onClose={() => setViewing(null)}>
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-navy-900">{viewing.user?.name}</h2>
+              <StatusBadge tone={viewing.isActive ? 'green' : 'gray'}>{viewing.isActive ? 'Active' : 'Inactive'}</StatusBadge>
+            </div>
+          </div>
+          <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <Detail label="Email" value={viewing.user?.email} />
+            <Detail label="Phone" value={viewing.user?.phone} />
+            <Detail label="Joined" value={formatDate(viewing.createdAt)} />
+            <div className="sm:col-span-2">
+              <Detail label="Expertise" value={(viewing.expertise || []).join(', ')} />
+            </div>
+          </dl>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setViewing(null)}>
+              Close
+            </Button>
+            {canEdit && (
+              <Button
+                onClick={() => {
+                  setViewing(null);
+                  openEdit(viewing);
+                }}
+              >
+                Edit
+              </Button>
+            )}
+          </div>
+        </Modal>
       )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-lg font-semibold text-navy-900">
               {editingId ? 'Edit Teacher' : 'Add Teacher'}
             </h2>

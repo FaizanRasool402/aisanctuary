@@ -13,5 +13,66 @@ body {
 }
 
 table td {
-  @apply whitespace-nowrap px-3 md:px-4;
+  @apply whitespace-nowrap px-3 2xl:px-4;
+}
+
+/* Hide the "#" column on mid-size desktops so wide tables fit without scrolling */
+@media (min-width: 1280px) and (max-width: 1535.98px) {
+  .rtable [data-role='index'] {
+    display: none;
+  }
+}
+
+/* Below 1280px, data tables become stacked cards instead of scrolling sideways */
+@media (max-width: 1279.98px) {
+  .rtable thead {
+    display: none;
+  }
+  .rtable,
+  .rtable tbody {
+    display: block;
+    width: 100%;
+  }
+  .rtable tbody > tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    padding: 1rem;
+  }
+  .rtable tbody > tr > td {
+    display: block;
+    min-width: 0;
+    max-width: none;
+    padding: 0 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .rtable tbody > tr > td * {
+    max-width: 100%;
+  }
+  .rtable td[data-label]:not([data-role])::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+  .rtable td[data-role='hide'],
+  .rtable td[data-role='index'] {
+    display: none;
+  }
+  .rtable td[data-role='main'],
+  .rtable td[data-role='actions'],
+  .rtable td[colspan] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279.98px) {
+  .rtable tbody > tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
