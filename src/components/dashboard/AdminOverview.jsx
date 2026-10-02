@@ -121,12 +121,6 @@ const icons = {
       <path d="M15.5 13 17 22l-5-3-5 3 1.5-9" />
     </Icon>
   ),
-  alert: (
-    <Icon>
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-      <path d="M12 9v4M12 17h.01" />
-    </Icon>
-  ),
 };
 
 /* ---------- Building blocks ---------- */
@@ -185,8 +179,11 @@ const Sparkline = ({ id, data, color }) => {
   );
 };
 
-const KpiCard = ({ id, icon, tone, label, value, sublabel, trend }) => (
-  <Card className="flex flex-col p-4">
+const KpiCard = ({ id, icon, tone, label, value, sublabel, trend, to }) => (
+  <Link
+    to={to}
+    className="flex flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-card transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+  >
     <div className="flex items-center gap-2.5">
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone.bg} ${tone.text} [&>svg]:h-4 [&>svg]:w-4`}>
         {icon}
@@ -201,7 +198,7 @@ const KpiCard = ({ id, icon, tone, label, value, sublabel, trend }) => (
     <div className="mt-1.5">
       <Sparkline id={id} data={trend?.series} color={tone.stroke} />
     </div>
-  </Card>
+  </Link>
 );
 
 const tones = {
@@ -295,7 +292,6 @@ const AdminOverview = ({ user, summary }) => {
   const [trendRange, setTrendRange] = useState(6);
 
   const isAdmin = user?.role === 'admin';
-  const firstName = (user?.name || 'there').split(' ')[0];
   const trends = summary.trends || {};
 
   const sendAiNews = async () => {
@@ -331,7 +327,7 @@ const AdminOverview = ({ user, summary }) => {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-2xl font-bold text-navy-900 md:text-3xl">
-            {greeting()}, {firstName} <span aria-hidden="true">☀️</span>
+            {greeting()} <span aria-hidden="true">☀️</span>
           </h2>
           <p className="mt-1 text-sm text-slate-500">
             Here&apos;s what&apos;s happening with your learning community today.
@@ -392,6 +388,7 @@ const AdminOverview = ({ user, summary }) => {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
           id="students"
+          to="/students"
           icon={icons.users}
           tone={tones.blue}
           label="Total Students"
@@ -401,6 +398,7 @@ const AdminOverview = ({ user, summary }) => {
         />
         <KpiCard
           id="active"
+          to="/students"
           icon={icons.userCheck}
           tone={tones.green}
           label="Active Students"
@@ -410,6 +408,7 @@ const AdminOverview = ({ user, summary }) => {
         />
         <KpiCard
           id="new"
+          to="/students"
           icon={icons.userPlus}
           tone={tones.purple}
           label="New (Last 30 Days)"
@@ -419,6 +418,7 @@ const AdminOverview = ({ user, summary }) => {
         />
         <KpiCard
           id="teachers"
+          to="/teachers"
           icon={icons.teacher}
           tone={tones.orange}
           label="Total Teachers"
@@ -428,6 +428,7 @@ const AdminOverview = ({ user, summary }) => {
         />
         <KpiCard
           id="courses"
+          to="/courses"
           icon={icons.book}
           tone={tones.sky}
           label="Active Courses"
@@ -437,6 +438,7 @@ const AdminOverview = ({ user, summary }) => {
         />
         <KpiCard
           id="batches"
+          to="/batches"
           icon={icons.layers}
           tone={tones.pink}
           label="Active Batches"
@@ -616,34 +618,6 @@ const AdminOverview = ({ user, summary }) => {
           >
             View list {icons.arrowRight}
           </Button>
-        </Card>
-
-        <Card className="p-5 md:p-6 lg:col-span-2">
-          <CardHeader
-            icon={icons.alert}
-            iconClass="text-red-500"
-            title={`Low Attendance (below ${summary.attendance?.threshold ?? 75}%)`}
-            action={<ViewAll to="/attendance" />}
-          />
-          {(summary.attendance?.alerts || []).length === 0 ? (
-            <p className="text-sm text-slate-400">No students below the attendance threshold.</p>
-          ) : (
-            <ul className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-              {summary.attendance.alerts.map((a) => (
-                <li
-                  key={a.enrollmentId}
-                  className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5 text-sm"
-                >
-                  <span className="min-w-0 truncate text-slate-700">
-                    {a.studentName} · <span className="text-slate-400">{a.batchName}</span>
-                  </span>
-                  <span className="shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
-                    {a.percent}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
         </Card>
       </div>
 
